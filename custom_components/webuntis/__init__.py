@@ -1142,7 +1142,7 @@ class WebUntis:
                     lesson,
                     err,
                 )
-                _LOGGER.debug("Teacher map: %s", self.session.teacher_map)
+                _LOGGER.debug("Teacher map: %s", getattr(self.session, "teacher_map", None))
 
         dic["name"] = get_lesson_name(self, lesson)
 
@@ -1218,6 +1218,13 @@ class WebUntis:
                 if "no right for getTeachers()" in str(error):
                     self.exclude_data_run.append("teachers")
                     self.exclude_data.append("teachers")
+            except Exception as error:
+                _LOGGER.debug(
+                    "Unable to populate 'teachers' for lesson %s: %s",
+                    lesson,
+                    error,
+                )
+
             try:
                 dic["original_teachers"] = [
                     {"name": str(teacher.name), "long_name": str(teacher.long_name)}

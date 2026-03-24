@@ -140,7 +140,8 @@ class ExtendedSession(WebUntisSession):
 
         """
         # override original function to add fallback mechanism in case fetching teachers is forbidden by the server
-        # in this case the teacher name that is given in the timetable is ussed to build a mapping of teacher id to teacher name. This is not ideal but at least gives some information about the teachers.
+        # in this case the teacher name that is given in the timetable is used to build a mapping of teacher id to teacher name. This is not ideal but at least gives some information about the teachers.
+        result = None
         if not getattr(self, "teachers_forbidden", False):
             try:
                 result = super().teachers(**kw_args)
@@ -149,10 +150,13 @@ class ExtendedSession(WebUntisSession):
                 if (
                     getattr(e, "code", None) == -8509
                 ):  # -8509 is the error code for "fetching teachers is forbidden"
-                    print(
-                        f"Fetching teachers failed with error: {e}. Assuming fetching teachers is forbidden and using fallback mechanism."
+                    log(
+                        "debug",
+                        f"Fetching teachers failed with error: {e}. Assuming fetching teachers is forbidden and using fallback mechanism.",
                     )
                     self.teachers_forbidden = True
+                else:
+                    raise
 
         if getattr(self, "teachers_forbidden", False):
             if not hasattr(self, "teacher_map"):
@@ -175,38 +179,31 @@ class ExtendedSession(WebUntisSession):
             result = objects.TeacherList(session=self, data=data)
         return result
 
-    # def _timetable_extended_raw(self, end, start, element_id, element_type_num):
-    def my_timetable(self, end, start):
-        result = super().my_timetable(end=end, start=start)
+    _ELEMENT_TYPE_TABLE = {
+        "klasse": 1,
+        "teacher": 2,
+        "subject": 3,
+        "room": 4,
+        "student": 5,
+    }
+
+    def _collect_teacher_ids(self, result):
+        """Collect all teacher IDs and original teacher IDs from timetable results."""
+        teidlist = []
+        for lesson in result:
+            for entry in getattr(lesson, "_data", {}).get("te", []):
+                if entry.get("id") is not None:
+                    teidlist.append(entry["id"])
+                if entry.get("orgid") is not None:
+                    teidlist.append(entry["orgid"])
+        return teidlist
+
+    def _ensure_teacher_mapping(self, result, start, end, element_type_num, element_id):
+        """Ensure teacher mapping is up-to-date if teachers are forbidden."""
         if not hasattr(self, "teachers_forbidden"):
             self.teachers()  # call teachers to set teachers_forbidden attribute
         if getattr(self, "teachers_forbidden", False):
-            element_id, element_type_num = (
-                self.login_result["personId"],
-                self.login_result["personType"],
-            )
-            teidlist = []
-            for lesson in result:
-                teidlist.extend(
-                    [
-                        teid
-                        for teid in [
-                            entry.get("id", "")
-                            for entry in getattr(lesson, "_data", {}).get("te", [])
-                            if entry.get("id") is not None
-                        ]
-                    ]
-                )
-                teidlist.extend(
-                    [
-                        teid
-                        for teid in [
-                            entry.get("orgid", "")
-                            for entry in getattr(lesson, "_data", {}).get("te", [])
-                            if entry.get("orgid") is not None
-                        ]
-                    ]
-                )
+            teidlist = self._collect_teacher_ids(result)
             if not set(teidlist).issubset(set(getattr(self, "teacher_map", {}).keys())):
                 self._update_teacher_mapping(
                     start=start,
@@ -214,6 +211,17 @@ class ExtendedSession(WebUntisSession):
                     element_type_num=element_type_num,
                     element_id=element_id,
                 )
+
+    # def _timetable_extended_raw(self, end, start, element_id, element_type_num):
+    def my_timetable(self, end, start):
+        result = super().my_timetable(end=end, start=start)
+        self._ensure_teacher_mapping(
+            result,
+            start=start,
+            end=end,
+            element_type_num=self.login_result["personType"],
+            element_id=self.login_result["personId"],
+        )
         return result
 
     def timetable_extended(self, start, end, **type_and_id):
@@ -221,58 +229,21 @@ class ExtendedSession(WebUntisSession):
 
         Like timetable, but includes more info.
         """
-        element_type_table = {
-            "klasse": 1,
-            "teacher": 2,
-            "subject": 3,
-            "room": 4,
-            "student": 5,
-        }
-
-        invalid_type_error = TypeError(
-            "You have to specify exactly one of the following parameters by "
-            "keyword: " + (", ".join(element_type_table.keys()))
-        )
-
         if len(type_and_id) != 1:
-            raise invalid_type_error
+            raise TypeError(
+                "You have to specify exactly one of the following parameters by "
+                "keyword: " + (", ".join(self._ELEMENT_TYPE_TABLE.keys()))
+            )
 
         element_type, element_id = list(type_and_id.items())[0]
-
         result = super().timetable_extended(start=start, end=end, **type_and_id)
-        if not hasattr(self, "teachers_forbidden"):
-            self.teachers()  # call teachers to set teachers_forbidden attribute
-        if getattr(self, "teachers_forbidden", False):
-            element_type_num = element_type_table.get(element_type)
-            teidlist = []
-            for lesson in result:
-                teidlist.extend(
-                    [
-                        teid
-                        for teid in [
-                            entry.get("id", "")
-                            for entry in getattr(lesson, "_data", {}).get("te", [])
-                            if entry.get("id") is not None
-                        ]
-                    ]
-                )
-                teidlist.extend(
-                    [
-                        teid
-                        for teid in [
-                            entry.get("orgid", "")
-                            for entry in getattr(lesson, "_data", {}).get("te", [])
-                            if entry.get("orgid") is not None
-                        ]
-                    ]
-                )
-            if not set(teidlist).issubset(set(getattr(self, "teacher_map", {}).keys())):
-                self._update_teacher_mapping(
-                    start=start,
-                    end=end,
-                    element_type_num=element_type_num,
-                    element_id=element_id,
-                )
+        self._ensure_teacher_mapping(
+            result,
+            start=start,
+            end=end,
+            element_type_num=self._ELEMENT_TYPE_TABLE.get(element_type),
+            element_id=element_id,
+        )
         return result
 
     def timetable(self, start, end, **type_and_id):
@@ -300,56 +271,19 @@ class ExtendedSession(WebUntisSession):
 
         :raises: :exc:`ValueError`, :exc:`TypeError`
         """
-        element_type_table = {
-            "klasse": 1,
-            "teacher": 2,
-            "subject": 3,
-            "room": 4,
-            "student": 5,
-        }
-
-        invalid_type_error = TypeError(
-            "You have to specify exactly one of the following parameters by "
-            "keyword: " + (", ".join(element_type_table.keys()))
-        )
-
         if len(type_and_id) != 1:
-            raise invalid_type_error
+            raise TypeError(
+                "You have to specify exactly one of the following parameters by "
+                "keyword: " + (", ".join(self._ELEMENT_TYPE_TABLE.keys()))
+            )
 
         element_type, element_id = list(type_and_id.items())[0]
-
         result = super().timetable(start=start, end=end, **type_and_id)
-        if not hasattr(self, "teachers_forbidden"):
-            self.teachers()  # call teachers to set teachers_forbidden attribute
-        if getattr(self, "teachers_forbidden", False):
-            element_type_num = element_type_table.get(element_type)
-            teidlist = []
-            for lesson in result:
-                teidlist.extend(
-                    [
-                        teid
-                        for teid in [
-                            entry.get("id", "")
-                            for entry in getattr(lesson, "_data", {}).get("te", [])
-                            if entry.get("id") is not None
-                        ]
-                    ]
-                )
-                teidlist.extend(
-                    [
-                        teid
-                        for teid in [
-                            entry.get("orgid", "")
-                            for entry in getattr(lesson, "_data", {}).get("te", [])
-                            if entry.get("orgid") is not None
-                        ]
-                    ]
-                )
-            if not set(teidlist).issubset(set(getattr(self, "teacher_map", {}).keys())):
-                self._update_teacher_mapping(
-                    start=start,
-                    end=end,
-                    element_type_num=element_type_num,
-                    element_id=element_id,
-                )
+        self._ensure_teacher_mapping(
+            result,
+            start=start,
+            end=end,
+            element_type_num=self._ELEMENT_TYPE_TABLE.get(element_type),
+            element_id=element_id,
+        )
         return result
