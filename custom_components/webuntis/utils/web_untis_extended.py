@@ -123,8 +123,10 @@ class ExtendedSession(WebUntisSession):
         teacher_map = {}
         for period in result:
             for t in period.get("te", []):
-                if "name" in t:
+                if "name" in t and "id" in t:
                     teacher_map[t["id"]] = t["name"]
+                if "orgname" in t and "orgid" in t:
+                    teacher_map[t["orgid"]] = t["orgname"]
         if not hasattr(self, "teacher_map"):
             self.teacher_map = teacher_map
         else:
@@ -173,6 +175,7 @@ class ExtendedSession(WebUntisSession):
             result = objects.TeacherList(session=self, data=data)
         return result
 
+    # def _timetable_extended_raw(self, end, start, element_id, element_type_num):
     def my_timetable(self, end, start):
         result = super().my_timetable(end=end, start=start)
         if not hasattr(self, "teachers_forbidden"):
@@ -191,6 +194,16 @@ class ExtendedSession(WebUntisSession):
                             entry.get("id", "")
                             for entry in getattr(lesson, "_data", {}).get("te", [])
                             if entry.get("id") is not None
+                        ]
+                    ]
+                )
+                teidlist.extend(
+                    [
+                        teid
+                        for teid in [
+                            entry.get("orgid", "")
+                            for entry in getattr(lesson, "_data", {}).get("te", [])
+                            if entry.get("orgid") is not None
                         ]
                     ]
                 )
@@ -240,6 +253,16 @@ class ExtendedSession(WebUntisSession):
                             entry.get("id", "")
                             for entry in getattr(lesson, "_data", {}).get("te", [])
                             if entry.get("id") is not None
+                        ]
+                    ]
+                )
+                teidlist.extend(
+                    [
+                        teid
+                        for teid in [
+                            entry.get("orgid", "")
+                            for entry in getattr(lesson, "_data", {}).get("te", [])
+                            if entry.get("orgid") is not None
                         ]
                     ]
                 )
@@ -309,6 +332,16 @@ class ExtendedSession(WebUntisSession):
                             entry.get("id", "")
                             for entry in getattr(lesson, "_data", {}).get("te", [])
                             if entry.get("id") is not None
+                        ]
+                    ]
+                )
+                teidlist.extend(
+                    [
+                        teid
+                        for teid in [
+                            entry.get("orgid", "")
+                            for entry in getattr(lesson, "_data", {}).get("te", [])
+                            if entry.get("orgid") is not None
                         ]
                     ]
                 )
