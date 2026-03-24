@@ -51,6 +51,8 @@ def compact_list(item_list, list_type=None, compact_tolerance=timedelta(minutes=
                     start - end <= compact_tolerance
                     and start >= end
                     and last_item[2]["code"] == item[2]["code"]
+                    and last_item[2]["rooms"] == item[2]["rooms"]
+                    and last_item[2]["teachers"] == item[2]["teachers"]
                 ):
                     last_item[1]["end"] = item[1]["end"]
                     last_item[2]["end"] = item[2]["end"]
@@ -75,6 +77,8 @@ def compact_list(item_list, list_type=None, compact_tolerance=timedelta(minutes=
                     and start >= end
                     and last_item["lsnumber"] == item["lsnumber"]
                     and last_item["code"] == item["code"]
+                    and last_item["rooms"] == item["rooms"]
+                    and last_item["teachers"] == item["teachers"]
                 ):
                     last_item["end"] = item["end"]
 
