@@ -231,7 +231,9 @@ class ExtendedSession(WebUntisSession):
                     start=start,
                     end=end,
                     element_type_num=element_type_num,
-                    element_id=element_id,
+                    element_id=int(
+                        element_id
+                    ),  # int() is needed, as sometimes not the id but the object is given, int() extracts the id from the object
                 )
 
     # def _timetable_extended_raw(self, end, start, element_id, element_type_num):
