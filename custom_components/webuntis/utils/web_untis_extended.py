@@ -243,7 +243,15 @@ class ExtendedSession(WebUntisSession):
         ):  # only do this when we haven't already determined that fetching teachers is forbidden, otherwise we would do unnecessary requests to the server
             try:
                 result = super().teachers(**kw_args)
-                self.teachers_forbidden = False
+                if not result:
+                    log(
+                        "debug",
+                        "Fetching teachers returned an empty result. Assuming fetching teachers is forbidden and using fallback mechanism.",
+                    )
+                    self.teachers_forbidden = True
+                    result = None
+                else:
+                    self.teachers_forbidden = False
             except Exception as e:
                 if getattr(
                     e, "code", None
